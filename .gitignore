@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+env/
+.venv/
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+/.idea/
+.vscode/
+dist/
+build/
+*.egg-info/
