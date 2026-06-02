@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SkyPoint Healthcare Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div id="root">
+      <div id="login-screen" class="screen active">
+        <div class="panel login-panel">
+          <div class="brand">
+            <h1>SkyPoint</h1>
+            <p>Secure healthcare operations console</p>
+          </div>
+          <form id="login-form">
+            <h2>Sign in</h2>
+            <label>
+              Username
+              <input id="username" type="text" placeholder="admin" required />
+            </label>
+            <label>
+              Password
+              <input id="password" type="password" placeholder="��������" required />
+            </label>
+            <button type="submit" class="primary">Login</button>
+            <p class="hint">Use <strong>admin / P@ssw0rd!</strong> for demo mode.</p>
+          </form>
+        </div>
+      </div>
+
+      <div id="dashboard-screen" class="screen">
+        <header class="topbar">
+          <div>
+            <span class="tag">Demo</span>
+            <h1>SkyPoint Clinical Dashboard</h1>
+          </div>
+          <button id="logout-btn">Logout</button>
+        </header>
+
+        <section class="widgets">
+          <article class="widget card">
+            <p class="label">Active patients</p>
+            <h2 id="metric-patients">--</h2>
+          </article>
+          <article class="widget card">
+            <p class="label">Open appointments</p>
+            <h2 id="metric-appointments">--</h2>
+          </article>
+          <article class="widget card">
+            <p class="label">Critical alerts</p>
+            <h2 id="metric-alerts">--</h2>
+          </article>
+          <article class="widget card">
+            <p class="label">Average wait</p>
+            <h2 id="metric-wait">-- mins</h2>
+          </article>
+        </section>
+
+        <section class="main-grid">
+          <div class="panel recent-card">
+            <div class="panel-header">
+              <h2>Upcoming Appointments</h2>
+            </div>
+            <div id="appointments-list" class="list"></div>
+          </div>
+          <div class="panel patient-card">
+            <div class="panel-header">
+              <h2>Patient Registry</h2>
+            </div>
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Name</th><th>DOB</th><th>Status</th></tr>
+              </thead>
+              <tbody id="patients-table"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

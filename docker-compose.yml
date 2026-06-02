@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: healthcare
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - healthcare-net
+
+  app:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/healthcare
+    ports:
+      - "8000:8000"
+    networks:
+      - healthcare-net
+
+volumes:
+  db-data:
+
+networks:
+  healthcare-net:
+    driver: bridge

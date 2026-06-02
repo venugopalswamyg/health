@@ -1,0 +1,61 @@
+replicaCount: 1
+image:
+  repository: healthcareacr733833.azurecr.io/healthcare-app
+  tag: "latest"
+service:
+  type: ClusterIP
+  port: 8000
+
+# Resource requests are required for the HPA's CPU-utilization target to work.
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 20
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+serviceAccount:
+  create: true
+  name: ""
+  # For Azure Workload Identity, set the AAD app/user-assigned client id here, e.g.:
+  #   azure.workload.identity/client-id: "<AZURE_AD_CLIENT_ID>"
+  annotations: {}
+
+# Toggle the Workload Identity pod label (the AKS webhook projects the token when true).
+workloadIdentity:
+  enabled: true
+
+keyvault:
+  name: hc-kv-dev-733833
+  tenantId: "a90a3e51-3c2e-4181-9600-bc0e180533e9"
+  # AAD client id used by the CSI provider via Workload Identity (set per environment).
+  clientId: ""
+  objects:
+    - objectName: database-url
+      objectType: secret
+      secretName: db-credentials
