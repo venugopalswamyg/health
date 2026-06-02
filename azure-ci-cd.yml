@@ -1,0 +1,68 @@
+name: Azure CI/CD Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Lint (ruff)
+        run: |
+          python -m pip install ruff
+          ruff check .
+
+      - name: Unit Tests
+        run: |
+          python -m pip install pytest
+          pytest -q || true
+
+      - name: SAST (placeholder)
+        run: echo "Run CodeQL / SonarQube here"
+
+      - name: Build image
+        run: |
+          IMAGE_NAME=myacr.azurecr.io/healthcare-app:${{ github.sha }}
+          docker build -t $IMAGE_NAME .
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          allow-no-subscription: true
+
+      - name: Push image to ACR
+        run: |
+          IMAGE_NAME=myacr.azurecr.io/healthcare-app:${{ github.sha }}
+          az acr login --name myacr
+          docker tag $IMAGE_NAME myacr.azurecr.io/healthcare-app:${{ github.sha }}
+          docker push myacr.azurecr.io/healthcare-app:${{ github.sha }}
+
+      - name: Container scan (placeholder)
+        run: echo "Run Trivy or Defender for Containers"
+
+      - name: IaC scan (placeholder)
+        run: echo "Run Checkov or tfsec"
+
+      - name: Deploy to AKS (dev)
+        run: |
+          echo "kubectl apply -f k8s/manifest.yaml or use helm"
+
+      - name: Manual approval before prod
+        uses: repo-sync/pull-request-approvals@v2

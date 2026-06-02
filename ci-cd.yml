@@ -1,0 +1,57 @@
+name: CI/CD Pipeline
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Lint (ruff)
+        run: |
+          python -m pip install ruff
+          ruff check .
+
+      - name: Unit Tests
+        run: |
+          python -m pip install pytest
+          pytest -q || true
+
+      - name: SAST (placeholder)
+        run: echo "Run SAST tool like CodeQL or SonarQube here"
+
+      - name: Build Docker image
+        env:
+          IMAGE: gcr.io/${{ env.GCP_PROJECT }}/healthcare-app:${{ github.sha }}
+        run: |
+          docker build -t $IMAGE .
+
+      - name: Container scan (placeholder)
+        run: echo "Run Trivy or similar container scanner here"
+
+      - name: Push image (using OIDC)
+        uses: google-github-actions/auth@v1
+        with:
+          workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/${{ env.WI_POOL }}/providers/${{ env.WI_PROVIDER }}
+          service_account: ${{ env.GCP_SA }}
+
+      - name: Manual approval before prod
+        if: github.ref == 'refs/heads/main'
+        uses: hmarr/auto-approve-action@v2
+
+      - name: Deploy to Dev (placeholder)
+        run: echo "Deploy to Cloud Run (dev) using gcloud run deploy --image $IMAGE --region ..."

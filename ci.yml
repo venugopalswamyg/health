@@ -1,0 +1,126 @@
+# GitHub Actions mirror of the Azure DevOps pipeline.
+# Auth uses OIDC / Workload Identity Federation (azure/login with a federated
+# credential) — there are NO static service-principal secrets stored as GitHub
+# secrets, only the (non-secret) client/tenant/subscription IDs.
+#
+# Prerequisites (one-time, documented in README):
+#   - An Azure AD app/user-assigned identity with a federated credential trusting
+#     repo:<org>/<repo>:ref:refs/heads/main (and pull_request).
+#   - Repo variables AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write   # required for OIDC federation
+  contents: read
+
+env:
+  ACR_LOGIN_SERVER: healthcareacr733833.azurecr.io
+  IMAGE_NAME: healthcare-app
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest semgrep pip-audit
+          pip install -r requirements.txt
+      - name: Lint
+        run: ruff check .
+      - name: Unit tests
+        run: pytest -q
+      - name: SAST (semgrep)
+        run: semgrep --config auto --error .
+      - name: Dependency scan (pip-audit)
+        run: pip-audit --requirement requirements.txt --progress=off
+      - name: IaC scan (tfsec, blocks on CRITICAL)
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform/azure
+          additional_args: --minimum-severity CRITICAL
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  build-and-push:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC / WIF)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Build image
+        run: docker build -t $IMAGE_NAME:${{ github.sha }} .
+      - name: Push to ACR (Git SHA + semver)
+        run: |
+          az acr login --name healthcareacr733833
+          SEMVER="1.0.${{ github.run_number }}"
+          docker tag $IMAGE_NAME:${{ github.sha }} $ACR_LOGIN_SERVER/$IMAGE_NAME:${{ github.sha }}
+          docker tag $IMAGE_NAME:${{ github.sha }} $ACR_LOGIN_SERVER/$IMAGE_NAME:$SEMVER
+          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:${{ github.sha }}
+          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:$SEMVER
+      - name: Container scan (Trivy, blocks on CRITICAL)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ env.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          severity: CRITICAL
+          ignore-unfixed: "true"
+          exit-code: "1"
+
+  deploy-dev:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: dev-aks
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC / WIF)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy (Helm)
+        run: |
+          az aks get-credentials -g rg-healthcare-dev -n aks-healthcare-dev --overwrite-existing
+          helm upgrade --install healthcare-app charts/healthcare-app \
+            --namespace healthcare-dev --create-namespace \
+            --set image.repository=$ACR_LOGIN_SERVER/$IMAGE_NAME \
+            --set image.tag=${{ github.sha }} \
+            || { helm rollback healthcare-app -n healthcare-dev || true; exit 1; }
+
+  deploy-prod:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: prod-aks   # GitHub Environment "prod-aks" carries the required-reviewers approval gate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Azure login (OIDC / WIF)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Deploy (Helm)
+        run: |
+          az aks get-credentials -g rg-healthcare-prod -n aks-healthcare-prod --overwrite-existing
+          helm upgrade --install healthcare-app charts/healthcare-app \
+            --namespace healthcare-prod --create-namespace \
+            --set image.repository=$ACR_LOGIN_SERVER/$IMAGE_NAME \
+            --set image.tag=${{ github.sha }} \
+            || { helm rollback healthcare-app -n healthcare-prod || true; exit 1; }
